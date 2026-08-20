@@ -1,1 +1,854 @@
-HELLO WORLD
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Handshake — how DNS, TLS and SSL actually secure a connection</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0b1220;
+    --ink-2:#0e1729;
+    --panel:#121c31;
+    --panel-2:#16223a;
+    --line:#233252;
+    --line-soft:#1a2740;
+    --text:#eef1f7;
+    --muted:#8fa0be;
+    --muted-2:#5f7096;
+    --gold:#c9a227;
+    --gold-soft:#e7c766;
+    --teal:#4fd1c5;
+    --teal-soft:#a9ece5;
+    --danger:#e2574c;
+    --danger-soft:#f3a49d;
+    --paper:#f4efe1;
+    --paper-ink:#2a2213;
+    --radius:14px;
+    --serif:'Fraunces', Georgia, serif;
+    --sans:'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --mono:'IBM Plex Mono', 'SF Mono', Menlo, monospace;
+  }
+
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(ellipse 900px 500px at 15% -5%, rgba(201,162,39,0.08), transparent 60%),
+      radial-gradient(ellipse 900px 600px at 90% 10%, rgba(79,209,197,0.07), transparent 55%),
+      var(--ink);
+    color:var(--text);
+    font-family:var(--sans);
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important; scroll-behavior:auto !important;}
+  }
+
+  ::selection{background:var(--gold); color:var(--ink);}
+
+  a{color:var(--teal-soft);}
+  :focus-visible{outline:2px solid var(--teal); outline-offset:3px; border-radius:4px;}
+
+  .wrap{max-width:1080px; margin:0 auto; padding:0 24px;}
+  section{padding:88px 0;}
+  @media (max-width:720px){ section{padding:56px 0;} }
+
+  .eyebrow{
+    font-family:var(--mono); text-transform:uppercase; letter-spacing:.14em;
+    font-size:12px; color:var(--gold-soft); margin:0 0 14px; display:flex; align-items:center; gap:10px;
+  }
+  .eyebrow::before{content:''; width:22px; height:1px; background:var(--gold-soft); display:inline-block;}
+
+  h1,h2,h3{font-family:var(--serif); font-weight:600; margin:0; letter-spacing:-0.01em;}
+  h1{font-size:clamp(34px,5.4vw,60px); line-height:1.06; font-weight:600;}
+  h1 em{font-style:italic; font-weight:500; color:var(--gold-soft);}
+  h2{font-size:clamp(26px,3.4vw,38px); line-height:1.14;}
+  h3{font-size:19px; font-weight:600;}
+  p{color:var(--muted); margin:14px 0 0;}
+  .lede{font-size:18px; color:#c5cfe3; max-width:640px;}
+
+  .section-head{max-width:680px; margin-bottom:44px;}
+
+  /* ---------- HERO ---------- */
+  .hero{padding:120px 0 80px; position:relative; overflow:hidden;}
+  .hero .wrap{display:grid; grid-template-columns:1.15fr .85fr; gap:56px; align-items:center;}
+  @media (max-width:860px){ .hero .wrap{grid-template-columns:1fr;} .hero{padding-top:76px;} }
+
+  .seal-wrap{display:flex; justify-content:center;}
+  .seal{width:min(280px,80vw); height:min(280px,80vw);}
+  .seal .ring{transform-origin:150px 150px; animation:spin 34s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .seal .stamp{animation:pop 900ms cubic-bezier(.2,1.6,.4,1) 400ms both;}
+  @keyframes pop{0%{transform:scale(.4) rotate(-14deg); opacity:0;} 60%{transform:scale(1.08) rotate(2deg); opacity:1;} 100%{transform:scale(1) rotate(0deg);}}
+
+  .hero-foot{display:flex; gap:28px; margin-top:34px; flex-wrap:wrap;}
+  .stat{font-family:var(--mono); font-size:12px; color:var(--muted-2);}
+  .stat b{display:block; font-family:var(--serif); font-size:15px; color:var(--text); font-weight:600;}
+
+  /* ---------- BUTTONS / CONTROLS ---------- */
+  .btn{
+    font-family:var(--mono); font-size:13px; letter-spacing:.02em; color:var(--text);
+    background:var(--panel-2); border:1px solid var(--line); border-radius:9px;
+    padding:9px 15px; cursor:pointer; transition:border-color .15s, background .15s, color .15s;
+    display:inline-flex; align-items:center; gap:8px;
+  }
+  .btn:hover{border-color:var(--gold-soft); color:var(--gold-soft);}
+  .btn:disabled{opacity:.35; cursor:not-allowed;}
+  .btn.primary{background:var(--gold); color:#241d05; border-color:var(--gold); font-weight:600;}
+  .btn.primary:hover{background:var(--gold-soft); color:#241d05;}
+
+  /* ---------- GLOSSARY CARDS ---------- */
+  .glossary{display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden;}
+  @media (max-width:760px){ .glossary{grid-template-columns:1fr;} }
+  .gcard{background:var(--panel); padding:28px 26px;}
+  .gcard .tag{font-family:var(--mono); font-size:12px; color:var(--muted-2); letter-spacing:.08em;}
+  .gcard h3{margin-top:8px; color:var(--teal-soft);}
+  .gcard p{font-size:14.5px;}
+
+  /* ---------- DIAGRAM SHELL (shared by DNS / handshake / termination / http-https) ---------- */
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+    padding:30px; margin-top:8px;
+  }
+  .stage{
+    position:relative; display:grid; grid-template-columns:auto 1fr auto; align-items:center;
+    gap:18px; min-height:150px; padding:10px 6px;
+  }
+  @media (max-width:640px){ .stage{grid-template-columns:1fr; text-align:center;} .stage .wire{order:2; min-height:70px;} .stage .node.client{order:1;} .stage .node.server{order:3;} }
+
+  .node{
+    display:flex; flex-direction:column; align-items:center; gap:8px; width:118px; text-align:center;
+  }
+  .node .icon{
+    width:56px; height:56px; border-radius:12px; display:flex; align-items:center; justify-content:center;
+    background:var(--panel-2); border:1px solid var(--line);
+  }
+  .node .icon svg{width:28px; height:28px;}
+  .node .label{font-family:var(--mono); font-size:12px; color:var(--muted); line-height:1.3;}
+  .node .label b{color:var(--text); display:block; font-size:13px;}
+
+  .wire{position:relative; height:64px;}
+  .track{
+    position:absolute; left:0; right:0; top:50%; height:2px; transform:translateY(-50%);
+    background:repeating-linear-gradient(90deg, var(--line-soft) 0 8px, transparent 8px 14px);
+  }
+  .track.secure{background:linear-gradient(90deg, var(--teal), var(--teal));}
+  .track.insecure{background:repeating-linear-gradient(90deg, var(--danger) 0 8px, transparent 8px 14px);}
+  .lock-mid{
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    width:34px; height:34px; border-radius:50%; background:var(--ink-2); border:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; transition:all .35s ease; z-index:3;
+  }
+  .lock-mid svg{width:16px; height:16px; opacity:.55; transition:opacity .3s;}
+  .lock-mid.on{border-color:var(--teal); box-shadow:0 0 0 5px rgba(79,209,197,.12);}
+  .lock-mid.on svg{opacity:1;}
+
+  .packet{
+    position:absolute; top:50%; transform:translate(-50%,-50%);
+    font-family:var(--mono); font-size:11.5px; white-space:nowrap; padding:6px 11px;
+    background:var(--ink); border:1px solid var(--gold-soft); color:var(--gold-soft);
+    border-radius:999px; transition:left .85s cubic-bezier(.5,0,.15,1), opacity .3s; z-index:2;
+  }
+  .packet.data-dot{padding:0; width:9px; height:9px; border-radius:50%; background:var(--teal); border:none;}
+
+  .cert-badge{
+    position:absolute; top:-6px; left:8px; width:22px; height:22px; border-radius:50%;
+    background:var(--gold); display:flex; align-items:center; justify-content:center;
+    transform:scale(0); transition:transform .5s cubic-bezier(.2,1.7,.3,1); z-index:4;
+  }
+  .cert-badge.show{transform:scale(1);}
+  .cert-badge svg{width:12px; height:12px;}
+
+  /* ---------- STEPPER (TLS handshake) ---------- */
+  .stepper-head{display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:6px;}
+  .step-counter{font-family:var(--mono); font-size:12px; color:var(--muted-2);}
+  .dots{display:flex; gap:7px; margin:18px 0 2px;}
+  .dot{width:8px; height:8px; border-radius:50%; background:var(--line); transition:background .2s, transform .2s; cursor:pointer; border:none; padding:0;}
+  .dot.active{background:var(--gold); transform:scale(1.35);}
+  .dot.done{background:var(--muted-2);}
+
+  .step-body{display:grid; grid-template-columns:1fr 1fr; gap:28px; margin-top:22px;}
+  @media (max-width:760px){ .step-body{grid-template-columns:1fr;} }
+  .step-title{font-family:var(--serif); font-size:20px; font-weight:600; margin:0 0 8px;}
+  .step-desc{font-size:14.5px; color:#c5cfe3; margin:0;}
+  .data-block{
+    background:var(--ink-2); border:1px solid var(--line); border-radius:10px; padding:16px 18px;
+    font-family:var(--mono); font-size:12.5px; color:var(--teal-soft); white-space:pre-wrap; line-height:1.6;
+  }
+
+  .controls-row{display:flex; align-items:center; gap:10px; margin-top:24px; flex-wrap:wrap;}
+
+  /* ---------- SEGMENTED TOGGLE (termination) ---------- */
+  .segmented{display:inline-flex; background:var(--panel-2); border:1px solid var(--line); border-radius:999px; padding:3px;}
+  .segmented button{
+    font-family:var(--mono); font-size:12.5px; border:none; background:transparent; color:var(--muted);
+    padding:8px 16px; border-radius:999px; cursor:pointer; transition:background .2s, color .2s;
+  }
+  .segmented button.active{background:var(--gold); color:#241d05; font-weight:600;}
+
+  .three-stage{display:grid; grid-template-columns:auto 1fr auto 1fr auto; align-items:center; gap:10px; min-height:150px;}
+  @media (max-width:760px){ .three-stage{grid-template-columns:1fr; text-align:center;} .three-stage .wire{min-height:60px;} }
+  .seg-label{position:absolute; bottom:-26px; left:50%; transform:translateX(-50%); font-family:var(--mono); font-size:11px; color:var(--muted-2); white-space:nowrap;}
+
+  .callout{
+    margin-top:34px; padding:16px 18px; border-radius:10px; border:1px solid var(--line-soft);
+    background:var(--panel-2); font-size:14px; color:#c5cfe3;
+  }
+  .callout b{color:var(--gold-soft);}
+
+  /* ---------- HTTP/HTTPS TOGGLE ---------- */
+  .switch-row{display:flex; align-items:center; gap:14px; margin-bottom:10px; flex-wrap:wrap;}
+  .switch{
+    --w:64px; --h:34px; width:var(--w); height:var(--h); border-radius:999px; position:relative;
+    background:var(--danger); border:none; cursor:pointer; transition:background .25s;
+  }
+  .switch.on{background:var(--teal);}
+  .switch .knob{
+    position:absolute; top:3px; left:3px; width:28px; height:28px; border-radius:50%; background:var(--ink);
+    transition:left .25s cubic-bezier(.5,0,.15,1); display:flex; align-items:center; justify-content:center;
+  }
+  .switch.on .knob{left:calc(var(--w) - 31px);}
+  .switch .knob svg{width:14px; height:14px;}
+  .switch-state{font-family:var(--mono); font-size:14px; font-weight:600;}
+  .switch-state.http{color:var(--danger-soft);}
+  .switch-state.https{color:var(--teal-soft);}
+
+  .addressbar{
+    display:flex; align-items:center; gap:9px; background:var(--ink-2); border:1px solid var(--line);
+    border-radius:9px; padding:9px 14px; font-family:var(--mono); font-size:13px; max-width:420px; margin:18px 0 0;
+  }
+  .addressbar svg{width:14px; height:14px; flex-shrink:0;}
+  .addressbar .warn{color:var(--danger-soft);}
+  .addressbar .ok{color:var(--teal-soft);}
+  .addressbar .url{color:var(--muted);}
+
+  .payload-panel{
+    margin-top:22px; border-radius:10px; border:1px solid var(--line); overflow:hidden;
+  }
+  .payload-head{
+    font-family:var(--mono); font-size:11.5px; letter-spacing:.06em; text-transform:uppercase;
+    padding:10px 16px; background:var(--panel-2); color:var(--muted); display:flex; justify-content:space-between;
+  }
+  .payload-body{
+    background:var(--ink-2); padding:18px 16px; font-family:var(--mono); font-size:13px; line-height:1.7;
+    min-height:76px;
+  }
+  .payload-body .plain{color:var(--danger-soft);}
+  .payload-body .cipher{color:var(--teal-soft); letter-spacing:.02em; word-break:break-all;}
+  .eye-tag{display:inline-flex; align-items:center; gap:6px; font-size:11px; color:var(--danger-soft);}
+
+  .impact-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:24px;}
+  @media (max-width:760px){ .impact-grid{grid-template-columns:1fr;} }
+  .impact-card{
+    border:1px solid var(--line-soft); border-radius:10px; padding:16px; background:var(--panel-2);
+    font-size:13.5px; color:#c5cfe3; transition:border-color .2s;
+  }
+  .impact-card b{display:block; font-family:var(--serif); font-size:15px; color:var(--text); margin-bottom:6px; font-weight:600;}
+
+  /* ---------- DNS VALIDATION FLOW ---------- */
+  .flow{display:flex; flex-direction:column; gap:0; margin-top:8px;}
+  .flow-step{display:grid; grid-template-columns:44px 1fr; gap:18px; padding:20px 0; position:relative;}
+  .flow-step:not(:last-child)::after{
+    content:''; position:absolute; left:21px; top:56px; bottom:-4px; width:1px; background:var(--line);
+  }
+  .flow-num{
+    width:44px; height:44px; border-radius:50%; background:var(--panel-2); border:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:14px;
+    color:var(--gold-soft); flex-shrink:0; z-index:1;
+  }
+  .flow-step h4{font-family:var(--sans); font-weight:600; font-size:15.5px; margin:0 0 6px; color:var(--text);}
+  .flow-step p{margin:0; font-size:14px;}
+  .flow-tag{font-family:var(--mono); font-size:11px; color:var(--muted-2); margin-top:8px; display:block;}
+
+  /* ---------- TAKEAWAYS ---------- */
+  .take-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden;}
+  @media (max-width:860px){ .take-grid{grid-template-columns:repeat(2,1fr);} }
+  @media (max-width:520px){ .take-grid{grid-template-columns:1fr;} }
+  .take-card{background:var(--panel); padding:24px 22px;}
+  .take-card .n{font-family:var(--mono); font-size:11px; color:var(--gold-soft);}
+  .take-card h3{margin:10px 0 8px; font-size:16.5px;}
+  .take-card p{font-size:13.5px;}
+
+  footer{padding:50px 0 70px; text-align:center;}
+  footer p{font-family:var(--mono); font-size:12px; color:var(--muted-2);}
+
+  .divider{height:1px; background:linear-gradient(90deg, transparent, var(--line), transparent); margin:0;}
+</style>
+</head>
+<body>
+
+<!-- ============ HERO ============ -->
+<section class="hero">
+  <div class="wrap">
+    <div>
+      <p class="eyebrow">DNS · TLS · SSL, in order</p>
+      <h1>Every secure connection starts with a <em>handshake.</em></h1>
+      <p class="lede">Before a browser and a server exchange a single byte of your data, they run a quiet negotiation: find the address, prove identity, agree on a secret. This page walks through that negotiation piece by piece — then lets you flip the lights off and see what happens without it.</p>
+      <div class="hero-foot">
+        <div class="stat"><b>~1</b> extra round trip for a full TLS 1.3 handshake</div>
+        <div class="stat"><b>Domain-validated</b> certificates, proven over DNS</div>
+        <div class="stat"><b>0</b> readable bytes for an eavesdropper on HTTPS</div>
+      </div>
+    </div>
+    <div class="seal-wrap">
+      <svg class="seal" viewBox="0 0 300 300" fill="none">
+        <g class="ring">
+          <circle cx="150" cy="150" r="118" stroke="#233252" stroke-width="1.5" stroke-dasharray="2 8"/>
+        </g>
+        <g class="stamp">
+          <circle cx="150" cy="150" r="92" fill="#121c31" stroke="#c9a227" stroke-width="2"/>
+          <circle cx="150" cy="150" r="78" fill="none" stroke="#c9a227" stroke-width="1" stroke-dasharray="3 5"/>
+          <path d="M150 108c-19 0-34 15-34 34 0 25 34 50 34 50s34-25 34-50c0-19-15-34-34-34z" fill="none" stroke="#e7c766" stroke-width="3"/>
+          <path d="M136 148l10 10 20-22" stroke="#4fd1c5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <text x="150" y="222" text-anchor="middle" fill="#8fa0be" font-family="IBM Plex Mono" font-size="10" letter-spacing="2">VERIFIED · TRUSTED CHAIN</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<div class="wrap"><div class="divider"></div></div>
+
+<!-- ============ GLOSSARY ============ -->
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Three letters, three jobs</p>
+      <h2>They get used interchangeably. They're not the same thing.</h2>
+    </div>
+    <div class="glossary">
+      <div class="gcard">
+        <span class="tag">DNS · Domain Name System</span>
+        <h3>Finds the address</h3>
+        <p>Translates a name like <code>example.com</code> into an IP address the network can actually route to. It's a phone book — it does not encrypt anything or prove who's on the other end.</p>
+      </div>
+      <div class="gcard">
+        <span class="tag">TLS · Transport Layer Security</span>
+        <h3>Builds the secure tunnel</h3>
+        <p>The modern protocol that authenticates the server, negotiates a shared secret, and encrypts everything sent afterward. This is the thing actually doing the work today.</p>
+      </div>
+      <div class="gcard">
+        <span class="tag">SSL · Secure Sockets Layer</span>
+        <h3>TLS's retired predecessor</h3>
+        <p>SSL came first and was formally deprecated years ago for security flaws. "SSL certificate" stuck around as everyday shorthand, but the certificate and handshake in use today are TLS.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ DNS RESOLUTION ============ -->
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Step zero</p>
+      <h2>Before TLS can start, the browser has to find the server</h2>
+      <p class="lede">Typing a URL kicks off a DNS lookup, resolving the hostname to an IP address, so the browser knows where to send the connection it's about to open.</p>
+    </div>
+    <div class="panel">
+      <div class="stage">
+        <div class="node client">
+          <div class="icon">
+            <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="13" rx="1.5" stroke="#eef1f7" stroke-width="1.5"/><path d="M8 20h8M12 17v3" stroke="#eef1f7" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </div>
+          <div class="label"><b>Browser</b>types example.com</div>
+        </div>
+        <div class="wire">
+          <div class="track"></div>
+        </div>
+        <div class="node">
+          <div class="icon">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M12 3a9 9 0 100 18 9 9 0 000-18z" stroke="#e7c766" stroke-width="1.5"/><path d="M3 12h18M12 3c2.2 2.4 3.4 5.4 3.4 9s-1.2 6.6-3.4 9c-2.2-2.4-3.4-5.4-3.4-9S9.8 5.4 12 3z" stroke="#e7c766" stroke-width="1.2"/></svg>
+          </div>
+          <div class="label"><b>DNS resolver</b>returns 93.184.216.34</div>
+        </div>
+      </div>
+      <div class="callout">DNS only answers <b>"where is it?"</b> — it doesn't answer <b>"can I trust it?"</b> That second question is what the certificate and TLS handshake are for, and it's also where DNS shows up again, in a different role: proving domain ownership to a Certificate Authority.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ DOMAIN VALIDATION ============ -->
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">How a certificate gets issued</p>
+      <h2>Proving example.com actually belongs to you</h2>
+      <p class="lede">Anyone can generate a key pair. A Certificate Authority (CA) will only sign a certificate for a domain once you've proven you control it — and for the most common certificate type, that proof happens over DNS.</p>
+    </div>
+    <div class="panel">
+      <div class="flow">
+        <div class="flow-step">
+          <div class="flow-num">1</div>
+          <div>
+            <h4>Request a certificate</h4>
+            <p>The site owner (usually through automation like Certbot or a hosting platform) asks a CA — say, Let's Encrypt — to issue a certificate for <code>example.com</code>.</p>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">2</div>
+          <div>
+            <h4>CA issues a challenge</h4>
+            <p>The CA generates a random token and hands back a challenge: place this exact value somewhere only the domain's real owner could put it.</p>
+            <span class="flow-tag">DNS-01 challenge · random token issued</span>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">3</div>
+          <div>
+            <h4>Owner publishes the proof</h4>
+            <p>The owner adds a TXT record at <code>_acme-challenge.example.com</code> containing that token — something only someone with control of the domain's DNS could do.</p>
+            <span class="flow-tag">_acme-challenge.example.com  TXT  "8f3a2c9e..."</span>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">4</div>
+          <div>
+            <h4>CA queries DNS to check</h4>
+            <p>The CA looks up that TXT record itself. If the value matches the token it issued, domain control is confirmed — no human review needed.</p>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">5</div>
+          <div>
+            <h4>Certificate signed and issued</h4>
+            <p>The CA signs a certificate binding the domain name to the site's public key, then chains it up to a root certificate every browser already trusts.</p>
+          </div>
+        </div>
+      </div>
+      <div class="callout">This is <b>domain validation (DV)</b> — it confirms control of the domain, nothing more. Other certificate types (organization- or extended-validation) add real-world identity checks on top, but the DNS or HTTP proof-of-control step is the foundation almost every certificate rests on.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TLS HANDSHAKE ============ -->
+<section id="handshake">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">The main event</p>
+      <h2>Inside the TLS handshake</h2>
+      <p class="lede">Certificate in hand, the browser and server now negotiate a private, tamper-evident channel — before any application data moves. Step through it.</p>
+    </div>
+
+    <div class="panel">
+      <div class="stage" id="hsStage">
+        <div class="node client">
+          <div class="icon" style="position:relative;">
+            <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="13" rx="1.5" stroke="#eef1f7" stroke-width="1.5"/><path d="M8 20h8M12 17v3" stroke="#eef1f7" stroke-width="1.5" stroke-linecap="round"/></svg>
+            <div class="cert-badge" id="clientCert"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4 10-10" stroke="#241d05" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          </div>
+          <div class="label"><b>Browser</b>Client</div>
+        </div>
+        <div class="wire">
+          <div class="track" id="hsTrack"></div>
+          <div class="lock-mid" id="hsLock">
+            <svg viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="1.5" stroke="#8fa0be" stroke-width="1.6"/><path d="M8 11V8a4 4 0 018 0v3" stroke="#8fa0be" stroke-width="1.6"/></svg>
+          </div>
+        </div>
+        <div class="node server">
+          <div class="icon">
+            <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="16" height="7" rx="1.2" stroke="#eef1f7" stroke-width="1.5"/><rect x="4" y="14" width="16" height="7" rx="1.2" stroke="#eef1f7" stroke-width="1.5"/><circle cx="7.5" cy="6.5" r="1" fill="#eef1f7"/><circle cx="7.5" cy="17.5" r="1" fill="#eef1f7"/></svg>
+          </div>
+          <div class="label"><b>example.com</b>Server</div>
+        </div>
+      </div>
+
+      <div class="dots" id="hsDots"></div>
+
+      <div class="step-body">
+        <div>
+          <div class="step-title" id="hsTitle"></div>
+          <p class="step-desc" id="hsDesc"></p>
+        </div>
+        <div class="data-block" id="hsData"></div>
+      </div>
+
+      <div class="controls-row">
+        <button class="btn" id="hsPrev">← Back</button>
+        <button class="btn primary" id="hsNext">Next →</button>
+        <button class="btn" id="hsPlay">▶ Play all</button>
+        <span class="step-counter" id="hsCounter"></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SSL TERMINATION ============ -->
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Where the tunnel actually ends</p>
+      <h2>SSL / TLS termination</h2>
+      <p class="lede">In production, the browser rarely talks TLS directly to the server running your code. A load balancer, reverse proxy, or CDN usually sits in front — and where the encryption stops matters.</p>
+    </div>
+
+    <div class="panel">
+      <div class="switch-row">
+        <div class="segmented" id="termToggle">
+          <button class="active" data-mode="edge">Terminate at the edge</button>
+          <button data-mode="passthrough">End-to-end (passthrough)</button>
+        </div>
+      </div>
+
+      <div class="three-stage" id="termStage">
+        <div class="node">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="13" rx="1.5" stroke="#eef1f7" stroke-width="1.5"/><path d="M8 20h8M12 17v3" stroke="#eef1f7" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+          <div class="label"><b>Browser</b>Client</div>
+        </div>
+        <div class="wire" style="position:relative;">
+          <div class="track secure"></div>
+          <div class="lock-mid on"><svg viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="1.5" stroke="#4fd1c5" stroke-width="1.6"/><path d="M8 11V8a4 4 0 018 0v3" stroke="#4fd1c5" stroke-width="1.6"/></svg></div>
+          <span class="seg-label">public internet — always encrypted</span>
+        </div>
+        <div class="node">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none"><path d="M4 12h16M4 12l4-4M4 12l4 4M20 12l-4-4M20 12l-4 4" stroke="#e7c766" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <div class="label"><b>Load balancer</b>/ edge proxy</div>
+        </div>
+        <div class="wire" style="position:relative;">
+          <div class="track" id="termTrack2"></div>
+          <div class="lock-mid" id="termLock2">
+            <svg viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="1.5" stroke="#8fa0be" stroke-width="1.6"/><path d="M8 11V8a4 4 0 018 0v3" stroke="#8fa0be" stroke-width="1.6"/></svg>
+          </div>
+          <span class="seg-label" id="termSeg2Label">private network — plain HTTP</span>
+        </div>
+        <div class="node">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="16" height="7" rx="1.2" stroke="#eef1f7" stroke-width="1.5"/><rect x="4" y="14" width="16" height="7" rx="1.2" stroke="#eef1f7" stroke-width="1.5"/><circle cx="7.5" cy="6.5" r="1" fill="#eef1f7"/><circle cx="7.5" cy="17.5" r="1" fill="#eef1f7"/></svg></div>
+          <div class="label"><b>App server</b>runs your code</div>
+        </div>
+      </div>
+
+      <div class="callout" id="termCallout" style="margin-top:46px;"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ HTTP vs HTTPS ============ -->
+<section id="compare">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Same request, two outcomes</p>
+      <h2>HTTP vs HTTPS — flip the switch</h2>
+      <p class="lede">Same login form, same network, same request. The only difference is whether TLS wrapped it first. Toggle it and watch what a passive observer on the network — a shared Wi-Fi, a compromised router, an ISP — can actually see.</p>
+    </div>
+
+    <div class="panel">
+      <div class="switch-row">
+        <button class="switch" id="httpSwitch" aria-label="Toggle HTTPS"><span class="knob" id="switchKnob"></span></button>
+        <span class="switch-state https" id="switchLabel">HTTPS — encrypted</span>
+      </div>
+
+      <div class="addressbar" id="addressBar">
+        <svg viewBox="0 0 24 24" fill="none" id="addrIcon"><rect x="5" y="11" width="14" height="9" rx="1.5" stroke="#a9ece5" stroke-width="1.6"/><path d="M8 11V8a4 4 0 018 0v3" stroke="#a9ece5" stroke-width="1.6"/></svg>
+        <span class="ok" id="addrProto">https://</span><span class="url">example.com/login</span>
+      </div>
+
+      <div class="stage" style="margin-top:26px;">
+        <div class="node client">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="13" rx="1.5" stroke="#eef1f7" stroke-width="1.5"/><path d="M8 20h8M12 17v3" stroke="#eef1f7" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+          <div class="label"><b>Browser</b>submits login</div>
+        </div>
+        <div class="wire">
+          <div class="track" id="cmpTrack"></div>
+          <div style="position:absolute; left:50%; top:100%; transform:translate(-50%,4px); text-align:center;" id="observerNode">
+            <svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z" stroke="#e2574c" stroke-width="1.4"/><circle cx="12" cy="12" r="3" stroke="#e2574c" stroke-width="1.4"/></svg>
+            <div class="eye-tag" id="observerLabel" style="margin-top:4px;">network observer</div>
+          </div>
+        </div>
+        <div class="node server">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="16" height="7" rx="1.2" stroke="#eef1f7" stroke-width="1.5"/><rect x="4" y="14" width="16" height="7" rx="1.2" stroke="#eef1f7" stroke-width="1.5"/><circle cx="7.5" cy="6.5" r="1" fill="#eef1f7"/><circle cx="7.5" cy="17.5" r="1" fill="#eef1f7"/></svg></div>
+          <div class="label"><b>example.com</b>Server</div>
+        </div>
+      </div>
+
+      <div class="payload-panel">
+        <div class="payload-head"><span>what the observer sees on the wire</span><span id="payloadTag">unreadable</span></div>
+        <div class="payload-body" id="payloadBody"></div>
+      </div>
+
+      <div class="impact-grid" id="impactGrid"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAKEAWAYS ============ -->
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Recap</p>
+      <h2>The four ideas worth keeping</h2>
+    </div>
+    <div class="take-grid">
+      <div class="take-card">
+        <div class="n">01</div>
+        <h3>DNS finds it</h3>
+        <p>Resolves a name to an address. No encryption, no identity check — that's not its job.</p>
+      </div>
+      <div class="take-card">
+        <div class="n">02</div>
+        <h3>A CA proves it</h3>
+        <p>Certificates are issued after proving domain control, often via a DNS TXT record challenge.</p>
+      </div>
+      <div class="take-card">
+        <div class="n">03</div>
+        <h3>TLS secures it</h3>
+        <p>The handshake authenticates the server and agrees a session key before any real data moves.</p>
+      </div>
+      <div class="take-card">
+        <div class="n">04</div>
+        <h3>Termination decides who holds the key</h3>
+        <p>Whether encryption ends at your edge or your app server changes what's protected on your own network.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap"><p>Diagrams are simplified for clarity — real handshakes and validation flows include additional messages, extensions, and edge cases.</p></div>
+</footer>
+
+<script>
+(function(){
+  // ---------------- TLS HANDSHAKE STEPPER ----------------
+  const steps = [
+    {
+      dir:'c2s', label:'ClientHello', title:'1 · Client says hello',
+      desc:"The browser opens the connection and lists the TLS versions and cipher suites it supports, sends a random value, and names the host it wants (SNI) — so a server hosting many sites knows which certificate to offer.",
+      data:"ClientHello\n  version: TLS 1.3\n  random: 8f3a2c9e...\n  cipher_suites: [AES_256_GCM, CHACHA20_POLY1305]\n  server_name: example.com"
+    },
+    {
+      dir:'s2c', label:'ServerHello + Certificate', title:'2 · Server replies and shows ID',
+      desc:"The server picks a cipher suite, sends its own random value, and presents its certificate — a document binding its public key to \u201cexample.com,\u201d signed by a Certificate Authority the browser already trusts.",
+      data:"ServerHello\n  cipher_suite: AES_256_GCM\n  random: 1d77b0af...\nCertificate\n  subject: example.com\n  issuer: Let's Encrypt R3\n  public_key: 04:9f:2a:..."
+    },
+    {
+      dir:'seal', label:'Certificate check', title:'3 · Browser checks the paperwork',
+      desc:"Before trusting anything, the browser walks the chain up to a root it already trusts, verifies the signature, checks the domain name matches, and confirms the certificate hasn't expired or been revoked.",
+      data:"chain: example.com \u2192 R3 \u2192 ISRG Root X1\nsignature: valid\nhostname match: valid\nexpiry: valid\nstatus: TRUSTED \u2713"
+    },
+    {
+      dir:'both', label:'Key exchange', title:'4 · Both sides agree on a secret',
+      desc:"Using elliptic-curve Diffie\u2013Hellman, client and server each combine their own private value with the other's public value and land on the same session key \u2014 without that key ever crossing the wire.",
+      data:"client_keyshare: 3f9c...\nserver_keyshare: a814...\nshared_secret: derived independently by both sides"
+    },
+    {
+      dir:'both2', label:'Finished', title:'5 · Both sides confirm',
+      desc:"Client and server each send a \u201cFinished\u201d message \u2014 a check value covering everything exchanged so far, encrypted with the new session key. A match means nothing was tampered with in transit.",
+      data:"Finished (client) \u2014 verify_data: encrypted\nFinished (server) \u2014 verify_data: encrypted\nresult: handshake integrity confirmed"
+    },
+    {
+      dir:'data', label:'Encrypted application data', title:'6 · The real request finally goes out',
+      desc:"From here on, the HTTP request and response travel inside the TLS session, encrypted with the shared key. Anyone watching the raw network traffic sees only ciphertext.",
+      data:"GET /account HTTP/2\n[encrypted with session key]\n\u2192 17 03 03 00 45 a2 9f c1 88 ..."
+    }
+  ];
+
+  let idx = 0, playing = false, playTimer = null;
+  const hsTitle = document.getElementById('hsTitle');
+  const hsDesc = document.getElementById('hsDesc');
+  const hsData = document.getElementById('hsData');
+  const hsCounter = document.getElementById('hsCounter');
+  const hsStage = document.getElementById('hsStage');
+  const hsLock = document.getElementById('hsLock');
+  const hsDots = document.getElementById('hsDots');
+  const clientCert = document.getElementById('clientCert');
+  const hsPrev = document.getElementById('hsPrev');
+  const hsNext = document.getElementById('hsNext');
+  const hsPlay = document.getElementById('hsPlay');
+
+  steps.forEach((s,i)=>{
+    const b = document.createElement('button');
+    b.className = 'dot'; b.setAttribute('aria-label', 'Go to step '+(i+1));
+    b.addEventListener('click', ()=>{ stopPlay(); goTo(i); });
+    hsDots.appendChild(b);
+  });
+
+  function clearPackets(){
+    hsStage.querySelectorAll('.packet').forEach(p=>p.remove());
+  }
+
+  function makePacket(startPct, label, cls){
+    const p = document.createElement('div');
+    p.className = 'packet' + (cls? ' '+cls : '');
+    p.style.left = startPct + '%';
+    if(label) p.textContent = label;
+    hsStage.querySelector('.wire').appendChild(p);
+    return p;
+  }
+
+  function render(i){
+    const s = steps[i];
+    hsTitle.textContent = s.title;
+    hsDesc.textContent = s.desc;
+    hsData.textContent = s.data;
+    hsCounter.textContent = 'Step ' + (i+1) + ' of ' + steps.length + ' — ' + s.label;
+
+    [...hsDots.children].forEach((d,k)=>{
+      d.classList.toggle('active', k===i);
+      d.classList.toggle('done', k<i);
+    });
+
+    clearPackets();
+    hsLock.classList.toggle('on', i>=3);
+    clientCert.classList.toggle('show', i>=1);
+
+    requestAnimationFrame(()=>{
+      if(s.dir==='c2s'){
+        const p = makePacket(6, s.label);
+        requestAnimationFrame(()=>{ p.style.left='94%'; });
+      } else if(s.dir==='s2c'){
+        const p = makePacket(94, s.label);
+        requestAnimationFrame(()=>{ p.style.left='6%'; });
+      } else if(s.dir==='both' || s.dir==='both2'){
+        const pa = makePacket(6, s.label);
+        const pb = makePacket(94, s.label);
+        requestAnimationFrame(()=>{ pa.style.left='47%'; pb.style.left='53%'; });
+      } else if(s.dir==='seal'){
+        const p = makePacket(16, '\u2713 verifying');
+      } else if(s.dir==='data'){
+        for(let k=0;k<3;k++){
+          const dot = makePacket(k%2===0? 10:90, '', 'data-dot');
+          dot.style.transition = 'left 1.1s ease-in-out';
+          dot.style.transitionDelay = (k*160)+'ms';
+          requestAnimationFrame(()=>{ dot.style.left = (k%2===0? 90:10) + '%'; });
+        }
+      }
+    });
+
+    hsPrev.disabled = i===0;
+    hsNext.textContent = i===steps.length-1 ? 'Restart ⟲' : 'Next →';
+  }
+
+  function goTo(i){
+    idx = ((i % steps.length) + steps.length) % steps.length;
+    render(idx);
+  }
+
+  hsPrev.addEventListener('click', ()=>{ stopPlay(); goTo(idx-1); });
+  hsNext.addEventListener('click', ()=>{
+    stopPlay();
+    if(idx===steps.length-1){ goTo(0); } else { goTo(idx+1); }
+  });
+
+  function stopPlay(){
+    playing = false;
+    hsPlay.textContent = '▶ Play all';
+    if(playTimer){ clearInterval(playTimer); playTimer=null; }
+  }
+  hsPlay.addEventListener('click', ()=>{
+    if(playing){ stopPlay(); return; }
+    playing = true;
+    hsPlay.textContent = '⏸ Pause';
+    goTo(0);
+    playTimer = setInterval(()=>{
+      if(idx>=steps.length-1){ stopPlay(); return; }
+      goTo(idx+1);
+    }, 2200);
+  });
+
+  render(0);
+
+  // ---------------- SSL TERMINATION TOGGLE ----------------
+  const termToggle = document.getElementById('termToggle');
+  const termTrack2 = document.getElementById('termTrack2');
+  const termLock2 = document.getElementById('termLock2');
+  const termSeg2Label = document.getElementById('termSeg2Label');
+  const termCallout = document.getElementById('termCallout');
+
+  const termModes = {
+    edge: {
+      trackClass:'', lockOn:false,
+      label:'private network — plain HTTP',
+      callout:"<b>TLS terminates at the edge.</b> The load balancer decrypts the request, then forwards it to the app server as plain HTTP over your private network. This is the common setup — it's simpler and offloads crypto work from your application servers — but anything with visibility into that internal network segment sees requests unencrypted."
+    },
+    passthrough: {
+      trackClass:'secure', lockOn:true,
+      label:'still encrypted — the app server holds the certificate',
+      callout:"<b>TLS passes straight through.</b> The load balancer forwards encrypted bytes without decrypting them; only the app server holds the private key and terminates the session. It costs more CPU on the app tier, but nothing on the internal network is ever readable in transit — useful when internal traffic itself needs to stay untrusted-by-default."
+    }
+  };
+
+  function setTermMode(mode){
+    const m = termModes[mode];
+    termTrack2.className = 'track ' + (m.trackClass||'');
+    termLock2.classList.toggle('on', m.lockOn);
+    termLock2.querySelector('svg').setAttribute('stroke', m.lockOn ? '#4fd1c5' : '#8fa0be');
+    termLock2.querySelectorAll('svg *').forEach(el=>el.setAttribute('stroke', m.lockOn ? '#4fd1c5' : '#8fa0be'));
+    termSeg2Label.textContent = m.label;
+    termCallout.innerHTML = m.callout;
+    [...termToggle.children].forEach(b=> b.classList.toggle('active', b.dataset.mode===mode));
+  }
+  termToggle.addEventListener('click', (e)=>{
+    const btn = e.target.closest('button');
+    if(!btn) return;
+    setTermMode(btn.dataset.mode);
+  });
+  setTermMode('edge');
+
+  // ---------------- HTTP vs HTTPS TOGGLE ----------------
+  const httpSwitch = document.getElementById('httpSwitch');
+  const switchLabel = document.getElementById('switchLabel');
+  const addrIcon = document.getElementById('addrIcon');
+  const addrProto = document.getElementById('addrProto');
+  const cmpTrack = document.getElementById('cmpTrack');
+  const observerLabel = document.getElementById('observerLabel');
+  const payloadBody = document.getElementById('payloadBody');
+  const payloadTag = document.getElementById('payloadTag');
+  const impactGrid = document.getElementById('impactGrid');
+
+  const impacts = {
+    https:[
+      {t:'Unreadable in transit', d:'The payload is encrypted with a session key only the browser and server hold. An observer sees ciphertext, nothing else.'},
+      {t:'Tamper-evident', d:'Any change to the bytes in transit breaks the integrity check, and the connection is dropped rather than silently altered.'},
+      {t:'Full browser trust', d:'The padlock shows, and secure-context-only APIs (camera, clipboard, service workers) are unlocked.'}
+    ],
+    http:[
+      {t:'Fully readable in transit', d:'Usernames, passwords, cookies, and form fields cross the network as plain text — visible to anyone sharing that network path.'},
+      {t:'Tamperable', d:'Nothing verifies the bytes weren\u2019t changed. Content can be injected or swapped en route without either side knowing.'},
+      {t:'Flagged and restricted', d:'Modern browsers label the page \u201cNot secure\u201d and block APIs that require an encrypted, authenticated context.'}
+    ]
+  };
+
+  function renderImpacts(mode){
+    impactGrid.innerHTML = '';
+    impacts[mode].forEach(item=>{
+      const div = document.createElement('div');
+      div.className = 'impact-card';
+      div.innerHTML = '<b>'+item.t+'</b>'+item.d;
+      impactGrid.appendChild(div);
+    });
+  }
+
+  function setHttps(on){
+    httpSwitch.classList.toggle('on', on);
+    switchLabel.textContent = on ? 'HTTPS — encrypted' : 'HTTP — unencrypted';
+    switchLabel.className = 'switch-state ' + (on ? 'https' : 'http');
+
+    addrProto.textContent = on ? 'https://' : 'http://';
+    addrProto.className = on ? 'ok' : 'warn';
+    addrIcon.innerHTML = on
+      ? '<rect x="5" y="11" width="14" height="9" rx="1.5" stroke="#a9ece5" stroke-width="1.6"/><path d="M8 11V8a4 4 0 018 0v3" stroke="#a9ece5" stroke-width="1.6"/>'
+      : '<rect x="5" y="11" width="14" height="9" rx="1.5" stroke="#f3a49d" stroke-width="1.6"/><path d="M8 11V9a4 4 0 017.6-1.8" stroke="#f3a49d" stroke-width="1.6"/>';
+
+    cmpTrack.className = 'track ' + (on ? 'secure' : 'insecure');
+    observerLabel.innerHTML = on
+      ? 'network observer <span style="color:#5f7096">(sees nothing useful)</span>'
+      : 'network observer <span style="color:#f3a49d">(sees everything)</span>';
+
+    payloadTag.textContent = on ? 'unreadable' : 'plain text';
+    payloadBody.innerHTML = on
+      ? '<span class="cipher">17 03 03 00 6a a2 9f c1 88 4e 0d 3b 7e 1a 55 f0 62 c9 8d ... </span>'
+      : '<span class="plain">POST /login HTTP/1.1<br>Host: example.com<br>user=alice&amp;pass=hunter2</span>';
+
+    renderImpacts(on ? 'https' : 'http');
+  }
+
+  httpSwitch.addEventListener('click', ()=> setHttps(!httpSwitch.classList.contains('on')));
+  setHttps(true);
+})();
+</script>
+</body>
+</html>
